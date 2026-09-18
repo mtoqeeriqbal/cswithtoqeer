@@ -1,15 +1,76 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   SESSION_ORDER,
-  TYPE_ORDER,
-  type DocType,
+  SUBJECT_CODE,
+  SUBJECT_LEVEL,
+  SUBJECT_NAME,
   type PastPaper,
   type PaperNumber,
   type Session,
 } from "@/data/pastPapers0478";
-import { IconChevronDown, IconDownload, IconFileText, IconSearch } from "./Icons";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconDownload,
+  IconFileText,
+  IconSearch,
+  IconStar,
+  IconX,
+} from "./Icons";
+
+const STORAGE_KEY = "0478-past-papers-state";
+
+type StoredState = Partial<Record<"marked" | "starred", string[]>>;
+
+// Notified whenever this tab writes to STORAGE_KEY, since the native
+// `storage` event only fires in *other* tabs/windows.
+let storeListeners: Array<() => void> = [];
+
+function subscribeStore(callback: () => void) {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) callback();
+  };
+  window.addEventListener("storage", onStorage);
+  storeListeners.push(callback);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    storeListeners = storeListeners.filter((l) => l !== callback);
+  };
+}
+
+function getStoreSnapshot(): string {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function getServerStoreSnapshot(): string {
+  return "";
+}
+
+function parseStoredState(raw: string): StoredState {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as StoredState;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredField(field: "marked" | "starred", keys: Set<string>) {
+  try {
+    const current = parseStoredState(window.localStorage.getItem(STORAGE_KEY) ?? "");
+    current[field] = [...keys];
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // localStorage unavailable (private browsing, etc.) — marks just won't persist.
+  }
+  for (const listener of storeListeners) listener();
+}
 
 function toggle<T>(set: Set<T>, value: T): Set<T> {
   const next = new Set(set);
@@ -51,26 +112,53 @@ function FilterGroup({ title, children }: { title: string; children: ReactNode }
   );
 }
 
+function FilterPill({ children, onRemove }: { children: ReactNode; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-bg-subtle px-3 py-1 text-sm font-medium text-text-primary">
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove filter"
+        className="rounded-full text-text-tertiary transition-colors hover:text-text-primary"
+      >
+        <IconX width={13} height={13} />
+      </button>
+    </span>
+  );
+}
+
 export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
   const [years, setYears] = useState<Set<number>>(new Set());
   const [sessions, setSessions] = useState<Set<Session>>(new Set());
   const [paper, setPaper] = useState<"all" | PaperNumber>("all");
-  const [types, setTypes] = useState<Set<DocType>>(new Set());
   const [collapsedYears, setCollapsedYears] = useState<Set<number>>(new Set());
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  const rawStored = useSyncExternalStore(subscribeStore, getStoreSnapshot, getServerStoreSnapshot);
+  const storedState = useMemo(() => parseStoredState(rawStored), [rawStored]);
+  const marked = useMemo(() => new Set(storedState.marked ?? []), [storedState]);
+  const starred = useMemo(() => new Set(storedState.starred ?? []), [storedState]);
+
+  function toggleMarked(code: string) {
+    writeStoredField("marked", toggle(marked, code));
+  }
+
+  function toggleStarred(code: string) {
+    writeStoredField("starred", toggle(starred, code));
+  }
 
   const allYears = useMemo(
     () => [...new Set(papers.map((p) => p.year))].sort((a, b) => b - a),
     [papers],
   );
 
-  const hasActiveFilters = years.size > 0 || sessions.size > 0 || paper !== "all" || types.size > 0;
+  const hasActiveFilters = years.size > 0 || sessions.size > 0 || paper !== "all";
 
   function clearFilters() {
     setYears(new Set());
     setSessions(new Set());
     setPaper("all");
-    setTypes(new Set());
   }
 
   const results = useMemo(() => {
@@ -78,14 +166,12 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
       .filter((p) => years.size === 0 || years.has(p.year))
       .filter((p) => sessions.size === 0 || sessions.has(p.session))
       .filter((p) => paper === "all" || p.paper === paper)
-      .filter((p) => types.size === 0 || types.has(p.type))
       .sort((a, b) => {
         const sessionDiff = SESSION_ORDER.indexOf(a.session) - SESSION_ORDER.indexOf(b.session);
         if (sessionDiff !== 0) return sessionDiff;
-        if (a.variant !== b.variant) return a.variant - b.variant;
-        return TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
+        return a.variant - b.variant;
       });
-  }, [papers, years, sessions, paper, types]);
+  }, [papers, years, sessions, paper]);
 
   const grouped = useMemo(() => {
     const byYear = new Map<number, PastPaper[]>();
@@ -96,8 +182,14 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
     return [...byYear.entries()].sort((a, b) => b[0] - a[0]);
   }, [results]);
 
+  const allCollapsed = grouped.length > 0 && grouped.every(([year]) => collapsedYears.has(year));
+
   function toggleYearCollapsed(year: number) {
     setCollapsedYears((prev) => toggle(prev, year));
+  }
+
+  function toggleAllCollapsed() {
+    setCollapsedYears(allCollapsed ? new Set() : new Set(grouped.map(([year]) => year)));
   }
 
   const filtersPanel = (
@@ -141,14 +233,6 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
         </div>
       </FilterGroup>
 
-      <FilterGroup title="Type">
-        {TYPE_ORDER.map((t) => (
-          <CheckboxRow key={t} checked={types.has(t)} onChange={() => setTypes((s) => toggle(s, t))}>
-            {t}
-          </CheckboxRow>
-        ))}
-      </FilterGroup>
-
       {hasActiveFilters && (
         <button
           type="button"
@@ -186,9 +270,52 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
       </aside>
 
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-xs text-text-tertiary">
-          {results.length} {results.length === 1 ? "paper" : "papers"} found
-        </p>
+        {hasActiveFilters && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            {[...years]
+              .sort((a, b) => b - a)
+              .map((y) => (
+                <FilterPill key={`year-${y}`} onRemove={() => setYears((s) => toggle(s, y))}>
+                  {y}
+                </FilterPill>
+              ))}
+            {[...sessions].map((s) => (
+              <FilterPill key={`session-${s}`} onRemove={() => setSessions((set) => toggle(set, s))}>
+                {s}
+              </FilterPill>
+            ))}
+            {paper !== "all" && (
+              <FilterPill onRemove={() => setPaper("all")}>Paper {paper}</FilterPill>
+            )}
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm font-medium text-accent hover:text-accent-hover"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-xs text-text-tertiary">
+            {results.length} {results.length === 1 ? "paper" : "papers"} found
+          </p>
+          {grouped.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllCollapsed}
+              className="flex items-center gap-1 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+              <IconChevronDown
+                width={14}
+                height={14}
+                className={`transition-transform ${allCollapsed ? "" : "rotate-180"}`}
+              />
+            </button>
+          )}
+        </div>
 
         {grouped.length > 0 ? (
           <div className="mt-4 flex flex-col gap-6">
@@ -206,7 +333,7 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
                     </span>
                     <span className="flex items-center gap-3">
                       <span className="font-mono text-xs text-text-tertiary">
-                        {yearPapers.length} {yearPapers.length === 1 ? "file" : "files"}
+                        {yearPapers.length} {yearPapers.length === 1 ? "paper" : "papers"}
                       </span>
                       <IconChevronDown
                         width={16}
@@ -218,43 +345,103 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
 
                   {!collapsed && (
                     <div className="border-t border-border">
-                      {yearPapers.map((p) => (
-                        <a
-                          key={p.fileUrl}
-                          href={p.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group flex items-center gap-3 border-b border-border px-5 py-3 transition-colors last:border-b-0 hover:bg-bg-subtle"
-                        >
-                          <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                              p.type === "Question Paper"
-                                ? "bg-accent-soft text-accent"
-                                : "bg-success-soft text-success"
-                            }`}
+                      {yearPapers.map((p) => {
+                        const isMarked = marked.has(p.code);
+                        const isStarred = starred.has(p.code);
+                        const variantDigit = p.variant % 10;
+                        return (
+                          <div
+                            key={p.code}
+                            className="flex flex-col gap-3 border-b border-border px-5 py-4 last:border-b-0 sm:flex-row sm:items-center sm:gap-4"
                           >
-                            <IconFileText width={16} height={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2">
-                              <span className="truncate text-sm font-medium text-text-primary">
-                                {p.session} · Paper {p.paper} · {p.type}
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                              <IconFileText width={16} height={16} />
+                            </span>
+
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="truncate text-sm font-medium text-text-primary">
+                                  {SUBJECT_NAME} &ndash; {SUBJECT_LEVEL} &ndash; {p.session} {p.year}
+                                </span>
+                                <span className="shrink-0 rounded-full bg-badge-bg px-2 py-0.5 font-mono text-[11px] font-medium text-badge-text">
+                                  P{p.paper}&middot;V{variantDigit}
+                                </span>
                               </span>
-                              <span className="shrink-0 rounded-full bg-badge-bg px-2 py-0.5 font-mono text-[11px] font-medium text-badge-text">
-                                Variant {p.variant}
+                              <span className="mt-0.5 block truncate font-mono text-xs text-text-tertiary">
+                                {SUBJECT_CODE} &middot; Cambridge &middot; {p.session} {p.year} &middot;{" "}
+                                {p.marks} marks
                               </span>
                             </span>
-                            <span className="mt-0.5 block truncate font-mono text-xs text-text-tertiary">
-                              {p.code}
+
+                            <span className="flex shrink-0 items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleMarked(p.code)}
+                                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                  isMarked
+                                    ? "border-success bg-success-soft text-success"
+                                    : "border-border text-text-secondary hover:border-border-strong hover:text-text-primary"
+                                }`}
+                              >
+                                <span
+                                  className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border ${
+                                    isMarked ? "border-success bg-success text-white" : "border-border-strong"
+                                  }`}
+                                >
+                                  {isMarked && <IconCheck width={9} height={9} strokeWidth={3} />}
+                                </span>
+                                Mark
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => toggleStarred(p.code)}
+                                aria-label={isStarred ? "Remove from favorites" : "Add to favorites"}
+                                aria-pressed={isStarred}
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                                  isStarred
+                                    ? "border-amber-300 bg-amber-50 text-amber-500"
+                                    : "border-border text-text-tertiary hover:border-border-strong hover:text-text-primary"
+                                }`}
+                              >
+                                <IconStar
+                                  width={14}
+                                  height={14}
+                                  fill={isStarred ? "currentColor" : "none"}
+                                />
+                              </button>
+
+                              <a
+                                href={p.paperUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent-hover"
+                              >
+                                <IconDownload width={13} height={13} />
+                                Paper
+                              </a>
+
+                              {p.markSchemeUrl ? (
+                                <a
+                                  href={p.markSchemeUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-border-strong hover:bg-bg-subtle"
+                                >
+                                  Mark Scheme
+                                </a>
+                              ) : (
+                                <span
+                                  title="Mark scheme not published yet"
+                                  className="flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-tertiary opacity-60"
+                                >
+                                  Mark Scheme
+                                </span>
+                              )}
                             </span>
-                          </span>
-                          <IconDownload
-                            width={16}
-                            height={16}
-                            className="shrink-0 text-text-tertiary transition-colors group-hover:text-accent"
-                          />
-                        </a>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
