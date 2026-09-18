@@ -71,7 +71,7 @@ function variantDigitsFor(session: Session): (1 | 2 | 3)[] {
 
 // Placeholder set — swap each PDF under public/past-papers/0478/ for the real file,
 // following the same year/session/paper/variant naming convention, no code changes needed.
-export const pastPapers0478: PastPaper[] = YEARS.flatMap((year) =>
+const placeholderPapers: PastPaper[] = YEARS.flatMap((year) =>
   SESSION_ORDER.flatMap((session) =>
     ([1, 2] as PaperNumber[]).flatMap((paper) =>
       variantDigitsFor(session).flatMap((variantDigit) =>
@@ -80,3 +80,17 @@ export const pastPapers0478: PastPaper[] = YEARS.flatMap((year) =>
     ),
   ),
 );
+
+// Real papers, added one entry at a time as actual PDFs become available.
+// Unlike placeholderPapers above, this list only contains entries that have a
+// genuine file under public/past-papers/0478/ — no dummy/mark-scheme filler.
+const realPapers: PastPaper[] = [
+  ...([1, 2, 3] as const).map((variantDigit) =>
+    buildEntry(2025, "Oct/Nov", 1, variantDigit, "Question Paper"),
+  ),
+  ...([1, 2, 3] as const).map((variantDigit) =>
+    buildEntry(2025, "Oct/Nov", 2, variantDigit, "Question Paper"),
+  ),
+];
+
+export const pastPapers0478: PastPaper[] = [...realPapers, ...placeholderPapers];
