@@ -4,13 +4,10 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   SESSION_ORDER,
   TYPE_ORDER,
-  ZONE_ORDER,
-  ZONE_LABEL,
   type DocType,
   type PastPaper,
   type PaperNumber,
   type Session,
-  type Zone,
 } from "@/data/pastPapers0478";
 import { IconChevronDown, IconDownload, IconFileText, IconSearch } from "./Icons";
 
@@ -58,7 +55,6 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
   const [years, setYears] = useState<Set<number>>(new Set());
   const [sessions, setSessions] = useState<Set<Session>>(new Set());
   const [paper, setPaper] = useState<"all" | PaperNumber>("all");
-  const [zones, setZones] = useState<Set<Zone>>(new Set());
   const [types, setTypes] = useState<Set<DocType>>(new Set());
   const [collapsedYears, setCollapsedYears] = useState<Set<number>>(new Set());
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -68,14 +64,12 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
     [papers],
   );
 
-  const hasActiveFilters =
-    years.size > 0 || sessions.size > 0 || paper !== "all" || zones.size > 0 || types.size > 0;
+  const hasActiveFilters = years.size > 0 || sessions.size > 0 || paper !== "all" || types.size > 0;
 
   function clearFilters() {
     setYears(new Set());
     setSessions(new Set());
     setPaper("all");
-    setZones(new Set());
     setTypes(new Set());
   }
 
@@ -84,16 +78,14 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
       .filter((p) => years.size === 0 || years.has(p.year))
       .filter((p) => sessions.size === 0 || sessions.has(p.session))
       .filter((p) => paper === "all" || p.paper === paper)
-      .filter((p) => zones.size === 0 || zones.has(p.zone))
       .filter((p) => types.size === 0 || types.has(p.type))
       .sort((a, b) => {
         const sessionDiff = SESSION_ORDER.indexOf(a.session) - SESSION_ORDER.indexOf(b.session);
         if (sessionDiff !== 0) return sessionDiff;
-        if (a.paper !== b.paper) return a.paper - b.paper;
-        if (a.zone !== b.zone) return a.zone - b.zone;
+        if (a.variant !== b.variant) return a.variant - b.variant;
         return TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
       });
-  }, [papers, years, sessions, paper, zones, types]);
+  }, [papers, years, sessions, paper, types]);
 
   const grouped = useMemo(() => {
     const byYear = new Map<number, PastPaper[]>();
@@ -147,14 +139,6 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
             </button>
           ))}
         </div>
-      </FilterGroup>
-
-      <FilterGroup title="Zone">
-        {ZONE_ORDER.map((z) => (
-          <CheckboxRow key={z} checked={zones.has(z)} onChange={() => setZones((s) => toggle(s, z))}>
-            {ZONE_LABEL[z]}
-          </CheckboxRow>
-        ))}
       </FilterGroup>
 
       <FilterGroup title="Type">
@@ -252,8 +236,13 @@ export function PastPapersFilter({ papers }: { papers: PastPaper[] }) {
                             <IconFileText width={16} height={16} />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-text-primary">
-                              {p.session} · Paper {p.paper} · {p.type}
+                            <span className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium text-text-primary">
+                                {p.session} · Paper {p.paper} · {p.type}
+                              </span>
+                              <span className="shrink-0 rounded-full bg-badge-bg px-2 py-0.5 font-mono text-[11px] font-medium text-badge-text">
+                                Variant {p.variant}
+                              </span>
                             </span>
                             <span className="mt-0.5 block truncate font-mono text-xs text-text-tertiary">
                               {p.code}

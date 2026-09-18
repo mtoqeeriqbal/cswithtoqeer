@@ -25,7 +25,8 @@ export default function PastPapers0478() {
             <p className="mx-auto mt-4 max-w-xl text-lg text-text-secondary">
               Cambridge IGCSE / O Level Computer Science (0478) question
               papers and mark schemes, filterable by year, session, paper,
-              zone, and type.
+              and type — every variant included, so you can practice all of
+              them.
             </p>
           </Reveal>
         </Section>
