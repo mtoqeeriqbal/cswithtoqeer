@@ -169,6 +169,16 @@ export function Navbar() {
           </li>
           <li>
             <Link
+              href="/0478/past-papers"
+              className={`transition-colors hover:text-text-primary ${
+                pathname === "/0478/past-papers" ? "text-text-primary" : ""
+              }`}
+            >
+              Past Papers
+            </Link>
+          </li>
+          <li>
+            <Link
               href="/contact"
               className={`transition-colors hover:text-text-primary ${
                 pathname === "/contact" ? "text-text-primary" : ""
@@ -261,6 +271,15 @@ export function Navbar() {
                 ),
               )}
             </ul>
+          </li>
+          <li>
+            <Link
+              href="/0478/past-papers"
+              onClick={() => setOpen(false)}
+              className="block py-2 hover:text-text-primary"
+            >
+              Past Papers
+            </Link>
           </li>
           <li>
             <Link
