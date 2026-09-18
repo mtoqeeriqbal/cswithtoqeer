@@ -59,32 +59,10 @@ function buildEntry(
   return { year, session, paper, variant, type, code, fileUrl };
 }
 
-const YEARS = [2024, 2023];
-
-// Placeholder assumption: fewer variants tend to surface for the smaller
-// Feb/Mar window than for May/Jun or Oct/Nov. Treat this as a rough seed
-// shape, not a verified fact — check against the real release list once you
-// swap in actual files, and just add/remove buildEntry calls as needed.
-function variantDigitsFor(session: Session): (1 | 2 | 3)[] {
-  return session === "Feb/Mar" ? [2] : [1, 2, 3];
-}
-
-// Placeholder set — swap each PDF under public/past-papers/0478/ for the real file,
-// following the same year/session/paper/variant naming convention, no code changes needed.
-const placeholderPapers: PastPaper[] = YEARS.flatMap((year) =>
-  SESSION_ORDER.flatMap((session) =>
-    ([1, 2] as PaperNumber[]).flatMap((paper) =>
-      variantDigitsFor(session).flatMap((variantDigit) =>
-        TYPE_ORDER.map((type) => buildEntry(year, session, paper, variantDigit, type)),
-      ),
-    ),
-  ),
-);
-
-// Real papers, added one entry at a time as actual PDFs become available.
-// Unlike placeholderPapers above, this list only contains entries that have a
-// genuine file under public/past-papers/0478/ — no dummy/mark-scheme filler.
-const realPapers: PastPaper[] = [
+// Real papers only — each entry here has a genuine file under
+// public/past-papers/0478/. Add more with buildEntry(...) as real PDFs
+// become available; never seed placeholder/dummy files.
+export const pastPapers0478: PastPaper[] = [
   ...([1, 2, 3] as const).map((variantDigit) =>
     buildEntry(2025, "Oct/Nov", 1, variantDigit, "Question Paper"),
   ),
@@ -92,5 +70,3 @@ const realPapers: PastPaper[] = [
     buildEntry(2025, "Oct/Nov", 2, variantDigit, "Question Paper"),
   ),
 ];
-
-export const pastPapers0478: PastPaper[] = [...realPapers, ...placeholderPapers];
